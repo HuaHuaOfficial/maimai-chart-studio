@@ -1,4 +1,12 @@
-# maimai Chart Studio 1.1.0
+# maimai Chart Studio 1.2.0
+
+## 1.2.0 — causal structure-preserving WHERE
+
+High-difficulty charts now receive a causal full-chart WHERE pass after the normal renderer succeeds. It considers whole two-bar structures, merging adjacent units when a Hold or Slide crosses the boundary. Each unit can rotate as a whole, preserving event timing, note family, modifiers, per-track durations, complete Slide routes, and within-unit relative geometry. The causal scorer reads only committed earlier events; a bounded beam retains alternatives. Whole-chart Harness witnesses guide whole-unit rollback when a combination is invalid. A changed chart must pass the production Harness again and receive a new content-bound publish permit. BASIC and ADVANCED keep the lightweight path.
+
+The bundled offline-trained scorer and vocabulary are local release assets. There is no network dependency. The user's Daydream café A/B was positive; automatic full-chart quality is still subject to the same Harness and content-binding checks.
+
+The notes below document the retained 1.1.0 feature line included in this complete package.
 
 ## Formal release boundary
 

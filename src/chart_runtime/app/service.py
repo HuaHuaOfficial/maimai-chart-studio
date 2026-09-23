@@ -10,7 +10,7 @@ import uuid
 import torch
 
 from .preparation import prepare_request,_create_generation_dir
-from ..domain import Budget,Definition,GenerationRequest
+from ..domain import Budget,Definition,GenerationRequest,Chart,ChartRef,Proposal,Observation,SessionResult,Scope,Verdict
 from ..runtime.payloads import Envelope
 from ..runtime.session import run_session
 from ..runtime.resources import get_workspace
@@ -74,6 +74,32 @@ def generate(**kwargs):
             binding=generator.context.cache.get('relational_what_binding')
             if not isinstance(binding,dict) or result.chart is None or binding.get('chartDigest')!=result.chart.ref.content_digest:
                 raise RuntimeError(f'难度{slot}的关系审计未绑定到最终 Harness 谱面摘要；{folder}')
+        if slot>=4:
+            from ..generator.where_structure import select
+            from ..generator.relation_recovery import verify_complete_relations
+            original=result.chart.payload.events
+            selected,where_info=select(original,prepared['bpm_ticks'],prepared['bpm_values'],root=root,codec=codec,harness=harness,slot=slot,ds=ds,bpm=prepared['bpm'],version=prepared['version_id'])
+            where_info['status']='unchanged'
+            if selected!=original:
+                relation_ok=True
+                if generator.relational_plan is not None:
+                    try:
+                        audit=verify_complete_relations(generator.context,generator.relational_plan,selected)
+                        relation_ok=not audit.get('failedCues')
+                    except (ValueError,KeyError,RuntimeError):
+                        relation_ok=False
+                if relation_ok:
+                    payload=codec.encode(selected,prepared['bpm_ticks'],prepared['bpm_values'])
+                    chart=Chart(ChartRef(request.request_id,str(uuid.uuid4()),payload.digest),request.definition,payload)
+                    proposal=Proposal(chart,result.chart.ref,str(uuid.uuid4()),complete=True)
+                    evaluation=harness.evaluate_batch(request,(proposal,),budget)[0]
+                    if evaluation.verdict is Verdict.ACCEPT and evaluation.scope is Scope.FULL_CHART and evaluation.coverage_complete:
+                        permit=harness.permit(evaluation)
+                        result=SessionResult('accepted',result.observations+(Observation(proposal,evaluation),),chart,permit)
+                        where_info['status']='accepted_new_permit'
+                    else:where_info['status']='harness_rejected_original_kept'
+                else:where_info['status']='relation_rejected_original_kept'
+            generator.timings.append({'phase':'where_structure','seconds':where_info['selection_seconds'],'events':len(selected),'whereStructure':where_info})
         progress(f'难度 {slot}: 全谱通过，反馈 {len(result.observations)-1} 轮')
         return slot,(result,harness,generator,request)
     phase=time.perf_counter()
